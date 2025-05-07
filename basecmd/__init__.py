@@ -7,27 +7,31 @@ Logging boilerplate for the command line.
 import logging
 import sys
 from argparse import ArgumentParser, Namespace
+from enum import IntEnum
 from functools import cached_property
 
 from colors import color, red, white, yellow
-from decouple import Choices, config
+from decouple import config
 
 __all__ = ("BaseCmd",)
-__version__ = "0.1.5"
+__version__ = "0.1.7"
+
+
+class LogLevel(IntEnum):
+    error = logging.ERROR
+    warning = logging.WARNING
+    info = logging.INFO
+    debug = logging.DEBUG
+
+    @classmethod
+    def as_dict(cls):
+        return {level.name: level.value for level in cls}
 
 
 class BaseCmd:
     "Provide logging and related command-line arguments"
 
-    LOG_FORMAT: str | None = config("LOG_FORMAT", default=None)  # pyright: ignore[reportAssignmentType]
-
-    # Map verbosity argument to log level
-    LOG_LEVELS = {
-        "error": logging.ERROR,
-        "warn": logging.WARNING,
-        "info": logging.INFO,
-        "debug": logging.DEBUG,
-    }
+    LOG_FORMAT: str | None = config("LOG_FORMAT", default=None)  # type: ignore
 
     options: Namespace
     log: logging.Logger
@@ -69,10 +73,8 @@ class BaseCmd:
         self.parser.add_argument(
             "-v",
             "--verbosity",
-            choices=self.LOG_LEVELS.keys(),
-            default=config(
-                "LOG_LEVEL", default="info", cast=Choices(self.LOG_LEVELS.keys())
-            ),
+            choices=LogLevel.as_dict().keys(),
+            default=config("LOG_LEVEL", default="info", cast=LogLevel.as_dict().get),
             help="Logging verbosity",
         )
 
@@ -87,14 +89,14 @@ class BaseCmd:
 
     def init_logging(self) -> None:
         self.log = logging.getLogger(self.__class__.__name__)
-        self.log.setLevel(self.LOG_LEVELS[self.options.verbosity])
+        self.log.setLevel(LogLevel.as_dict().get(self.options.verbosity, logging.INFO))
 
         if self.options.log_file:
             logging.basicConfig(filename=self.options.log_file)
         else:
             logging.basicConfig(stream=sys.stdout)
 
-        if self.LOG_FORMAT is None and (self.options.log_file or self.tty_log):
+        if self.LOG_FORMAT is None:
             self.LOG_FORMAT = "%(asctime).19s  %(message)s"
 
         if self.tty_log:
