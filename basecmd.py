@@ -8,13 +8,12 @@ import logging
 import sys
 from argparse import ArgumentParser, Namespace
 from enum import IntEnum
-from functools import cached_property
 
 from colors import color, red, white, yellow
 from decouple import config
 
 __all__ = ("BaseCmd",)
-__version__ = "0.1.8"
+__version__ = "0.1.10"
 
 
 class LogLevel(IntEnum):
@@ -31,7 +30,8 @@ class LogLevel(IntEnum):
 class BaseCmd:
     "Provide logging and related command-line arguments"
 
-    LOG_FORMAT: str | None = config("LOG_FORMAT", default=None)  # type: ignore
+    DEFAULT_LOG_FORMAT = "%(asctime).19s  %(message)s"
+    LOG_FORMAT: str = config("LOG_FORMAT", default=DEFAULT_LOG_FORMAT)
 
     options: Namespace
     log: logging.Logger
@@ -58,14 +58,12 @@ class BaseCmd:
                 record
             )
 
-    def __init__(self, **kw):
+    def __init__(self):
         self.parse_args()
         self.init_logging()
-        super(BaseCmd, self).__init__(**kw)
 
     def add_arguments(self) -> None:
         "Hook for subclasses to add additional command line options"
-        pass
 
     def parse_args(self, args=None) -> None:
         self.parser = ArgumentParser(description=self.__doc__)
@@ -73,8 +71,8 @@ class BaseCmd:
         self.parser.add_argument(
             "-v",
             "--verbosity",
-            choices=LogLevel.as_dict().keys(),
-            default=config("LOG_LEVEL", default="info", cast=LogLevel.as_dict().get),
+            choices=LogLevel._member_names_,
+            default=config("LOG_LEVEL", default="info"),
             help="Logging verbosity",
         )
 
@@ -96,21 +94,22 @@ class BaseCmd:
         else:
             logging.basicConfig(stream=sys.stdout)
 
-        if self.LOG_FORMAT is None:
-            self.LOG_FORMAT = "%(asctime).19s  %(message)s"
-
+        self.rootHandler = logging.getLogger().handlers[0]
+        self.tty_log = (
+            type(self.rootHandler) is logging.StreamHandler
+            and self.rootHandler.stream.isatty()  # ty: ignore[unresolved-attribute]
+        )
         if self.tty_log:
             self.rootHandler.setFormatter(self.ColorFormatter(self.LOG_FORMAT))
         else:
             self.rootHandler.setFormatter(logging.Formatter(self.LOG_FORMAT))
 
-    @cached_property
-    def rootHandler(self) -> logging.Handler:
-        return logging.getLogger().handlers[0]
 
-    @cached_property
-    def tty_log(self) -> bool:
-        return (
-            type(self.rootHandler) is logging.StreamHandler
-            and self.rootHandler.stream.isatty()
-        )
+if __name__ == "__main__":  # Demo code
+
+    class DemoCmd(BaseCmd):
+        def __call__(self):
+            self.log.debug("Command line options: %s", self.options)
+
+    cmd = DemoCmd()
+    cmd()

@@ -12,7 +12,7 @@ dist: .venv
 	uv build
 	
 pypi: clean dist
-	uv publish
+	uv publish --token `pass token/pypi.org` 
 
 .venv:
 	uv sync
